@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   User,
@@ -21,33 +23,35 @@ import {
 import { cn } from "@/lib/utils"
 
 const navigationItems = [
-  { icon: LayoutDashboard, label: "Tableau de bord", active: true },
-  { icon: User, label: "Profil", active: false },
-  { icon: FileText, label: "Blog", active: false },
-  { icon: Newspaper, label: "Actualités", active: false },
-  { icon: Calendar, label: "Évènements", active: false },
-  { icon: Users, label: "Communautés", active: false },
-  { icon: BookUser, label: "Annuaire", active: false },
+  { icon: LayoutDashboard, label: "Tableau de bord", href: "/" },
+  { icon: User, label: "Profil", href: "/profil" },
+  { icon: FileText, label: "Blog", href: "/blog" },
+  { icon: Newspaper, label: "Actualités", href: "/actualites" },
+  { icon: Calendar, label: "Évènements", href: "/evenements" },
+  { icon: Users, label: "Communautés", href: "/communautes" },
+  { icon: BookUser, label: "Annuaire", href: "/annuaire" },
 ]
 
 const administrationItems = [
-  { icon: CreditCard, label: "Gestion cotisations", active: false },
-  { icon: Heart, label: "Gestion des intérêts", active: false },
-  { icon: Tag, label: "Gestion des types d'évènements", active: false },
-  { icon: Award, label: "Gestion des compétences", active: false },
-  { icon: UserCog, label: "Liste des utilisateurs", active: false },
-  { icon: HelpCircle, label: "Gestion F.A.Q", active: false },
+  { icon: CreditCard, label: "Gestion cotisations", href: "/admin/cotisations" },
+  { icon: Heart, label: "Gestion des intérêts", href: "/admin/interets" },
+  { icon: Tag, label: "Gestion des types d'évènements", href: "/admin/types-evenements" },
+  { icon: Award, label: "Gestion des compétences", href: "/admin/competences" },
+  { icon: UserCog, label: "Liste des utilisateurs", href: "/admin/utilisateurs" },
+  { icon: HelpCircle, label: "Gestion F.A.Q", href: "/admin/faq" },
 ]
 
 interface SidebarItemProps {
   icon: React.ElementType
   label: string
+  href: string
   active?: boolean
 }
 
-function SidebarItem({ icon: Icon, label, active }: SidebarItemProps) {
+function SidebarItem({ icon: Icon, label, href, active }: SidebarItemProps) {
   return (
-    <button
+    <Link
+      href={href}
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
         active
@@ -57,12 +61,18 @@ function SidebarItem({ icon: Icon, label, active }: SidebarItemProps) {
     >
       <Icon className="h-5 w-5 shrink-0" />
       <span className="truncate">{label}</span>
-    </button>
+    </Link>
   )
 }
 
 export function Sidebar() {
+  const pathname = usePathname()
   const [isAdminExpanded, setIsAdminExpanded] = useState(true)
+
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/"
+    return pathname.startsWith(href)
+  }
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col border-r border-sidebar-border bg-sidebar">
@@ -92,7 +102,8 @@ export function Sidebar() {
                 key={item.label}
                 icon={item.icon}
                 label={item.label}
-                active={item.active}
+                href={item.href}
+                active={isActive(item.href)}
               />
             ))}
           </div>
@@ -122,7 +133,8 @@ export function Sidebar() {
                   key={item.label}
                   icon={item.icon}
                   label={item.label}
-                  active={item.active}
+                  href={item.href}
+                  active={isActive(item.href)}
                 />
               ))}
             </div>
