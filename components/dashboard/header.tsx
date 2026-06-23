@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useSidebar } from "./sidebar-context"
+import { ThemeToggle } from "./theme-toggle"
 
 export function Header() {
   const { toggle } = useSidebar()
@@ -39,6 +40,9 @@ export function Header() {
 
       {/* Right Section */}
       <div className="flex items-center gap-2 sm:gap-4">
+        {/* Theme toggle */}
+        <ThemeToggle />
+
         {/* Notifications */}
         <button className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
           <Bell className="h-5 w-5" />

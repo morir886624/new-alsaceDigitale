@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useSidebar } from "./sidebar-context"
+import { PublishDialog } from "./publish-dialog"
 
 const navigationItems = [
   { icon: LayoutDashboard, label: "Tableau de bord", href: "/" },
@@ -72,6 +73,7 @@ function SidebarItem({ icon: Icon, label, href, active, onNavigate }: SidebarIte
 export function Sidebar() {
   const pathname = usePathname()
   const [isAdminExpanded, setIsAdminExpanded] = useState(true)
+  const [isPublishOpen, setIsPublishOpen] = useState(false)
   const { isOpen, close } = useSidebar()
 
   const isActive = (href: string) => {
@@ -173,12 +175,20 @@ export function Sidebar() {
 
       {/* CTA Button */}
       <div className="border-t border-sidebar-border p-4">
-        <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 hover:shadow-lg">
+        <button
+          onClick={() => {
+            setIsPublishOpen(true)
+            close()
+          }}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 hover:shadow-lg"
+        >
           <Plus className="h-5 w-5" />
           <span>Publier du contenu</span>
         </button>
       </div>
       </aside>
+
+      <PublishDialog open={isPublishOpen} onOpenChange={setIsPublishOpen} />
     </>
   )
 }
