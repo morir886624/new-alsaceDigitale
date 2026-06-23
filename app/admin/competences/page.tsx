@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { PageHeader } from "@/components/dashboard/page-header"
+import { formatNumber } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -210,7 +211,7 @@ export default function GestionCompetencesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Sélections</p>
-                <p className="text-2xl font-bold text-foreground">{totalMembers.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-foreground">{formatNumber(totalMembers)}</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                 <Users className="h-6 w-6 text-primary" />
