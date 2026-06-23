@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { PageHeader } from "@/components/dashboard/page-header"
+import { notify } from "@/lib/notify"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -27,8 +28,30 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
-const communities = [
+interface Community {
+  id: number
+  name: string
+  description: string
+  members: number
+  posts: number
+  isPublic: boolean
+  isMember: boolean
+  isAdmin: boolean
+  category: string
+  image: string
+  admins: { name: string; avatar: string }[]
+}
+
+const initialCommunities: Community[] = [
   {
     id: 1,
     name: "Tech Strasbourg",
@@ -123,11 +146,16 @@ const communities = [
 ]
 
 const categories = ["Toutes", "Général", "Intelligence Artificielle", "DevOps", "Startups", "Environnement", "Blockchain"]
+const categoryOptions = categories.filter((c) => c !== "Toutes")
 
 export default function CommunautesPage() {
+  const [communities, setCommunities] = useState<Community[]>(initialCommunities)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("Toutes")
   const [filter, setFilter] = useState<"all" | "member" | "admin">("all")
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [form, setForm] = useState({ name: "", description: "", category: "Général", isPublic: true })
 
   const filteredCommunities = communities.filter((community) => {
     if (filter === "member" && !community.isMember) return false
@@ -137,6 +165,64 @@ export default function CommunautesPage() {
     return true
   })
 
+  const openCreate = () => {
+    setEditingId(null)
+    setForm({ name: "", description: "", category: "Général", isPublic: true })
+    setIsDialogOpen(true)
+  }
+
+  const openEdit = (community: Community) => {
+    setEditingId(community.id)
+    setForm({ name: community.name, description: community.description, category: community.category, isPublic: community.isPublic })
+    setIsDialogOpen(true)
+  }
+
+  const handleSubmit = () => {
+    if (!form.name.trim()) {
+      notify.error("Champ requis", "Veuillez renseigner le nom de la communauté.")
+      return
+    }
+    if (editingId !== null) {
+      setCommunities((prev) =>
+        prev.map((c) =>
+          c.id === editingId
+            ? { ...c, name: form.name.trim(), description: form.description.trim(), category: form.category, isPublic: form.isPublic }
+            : c
+        )
+      )
+      notify.updated(form.name.trim())
+    } else {
+      const newCommunity: Community = {
+        id: Math.max(0, ...communities.map((c) => c.id)) + 1,
+        name: form.name.trim(),
+        description: form.description.trim(),
+        members: 1,
+        posts: 0,
+        isPublic: form.isPublic,
+        isMember: true,
+        isAdmin: true,
+        category: form.category,
+        image: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=600&h=400&fit=crop",
+        admins: [{ name: "Jean Dupont", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face" }],
+      }
+      setCommunities((prev) => [newCommunity, ...prev])
+      notify.created(newCommunity.name)
+    }
+    setIsDialogOpen(false)
+  }
+
+  const handleJoin = (community: Community) => {
+    setCommunities((prev) =>
+      prev.map((c) => (c.id === community.id ? { ...c, isMember: true, members: c.members + 1 } : c))
+    )
+    notify.joined(community.name)
+  }
+
+  const handleDelete = (community: Community) => {
+    setCommunities((prev) => prev.filter((c) => c.id !== community.id))
+    notify.deleted(community.name)
+  }
+
   return (
     <DashboardLayout>
       <PageHeader 
@@ -144,12 +230,78 @@ export default function CommunautesPage() {
         description="Rejoignez et gérez vos communautés"
         icon={Users}
         actions={
-          <Button>
+          <Button onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />
             Créer une communauté
           </Button>
         }
       />
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingId !== null ? "Modifier la communauté" : "Créer une communauté"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingId !== null
+                ? "Mettez à jour les informations de votre communauté."
+                : "Lancez une nouvelle communauté pour rassembler les membres."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Nom</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Ex: Cloud Native Alsace"
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Description</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Décrivez la communauté..."
+                rows={3}
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Catégorie</label>
+                <select
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  {categoryOptions.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Visibilité</label>
+                <select
+                  value={form.isPublic ? "public" : "private"}
+                  onChange={(e) => setForm({ ...form, isPublic: e.target.value === "public" })}
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  <option value="public">Publique</option>
+                  <option value="private">Privée</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
+            <Button onClick={handleSubmit}>{editingId !== null ? "Enregistrer" : "Créer"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filtres et recherche */}
       <Card className="mb-6">
@@ -218,7 +370,7 @@ export default function CommunautesPage() {
           <Card key={community.id} className="overflow-hidden transition-shadow hover:shadow-md">
             <div className="relative aspect-video overflow-hidden">
               <img
-                src={community.image}
+                src={community.image || "/placeholder.svg"}
                 alt={community.name}
                 className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
               />
@@ -240,7 +392,7 @@ export default function CommunautesPage() {
               <div className="mb-2 flex items-start justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground hover:text-primary">
-                    <a href="#">{community.name}</a>
+                    <button type="button" onClick={() => notify.info(community.name, "Ouverture de la communauté.")}>{community.name}</button>
                   </h3>
                   <Badge variant="outline" className="mt-1 text-xs">{community.category}</Badge>
                 </div>
@@ -251,21 +403,21 @@ export default function CommunautesPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => notify.info(community.name, "Ouverture de la communauté.")}>
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Voir
                     </DropdownMenuItem>
                     {community.isAdmin && (
                       <>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => notify.info("Paramètres", `Paramètres de « ${community.name} ».`)}>
                           <Settings className="mr-2 h-4 w-4" />
                           Paramètres
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEdit(community)}>
                           <Edit2 className="mr-2 h-4 w-4" />
                           Modifier
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(community)}>
                           <Trash2 className="mr-2 h-4 w-4" />
                           Supprimer
                         </DropdownMenuItem>
@@ -291,14 +443,14 @@ export default function CommunautesPage() {
                 <div className="flex -space-x-2">
                   {community.admins.map((admin, index) => (
                     <Avatar key={index} className="h-7 w-7 border-2 border-background">
-                      <AvatarImage src={admin.avatar} alt={admin.name} />
+                      <AvatarImage src={admin.avatar || "/placeholder.svg"} alt={admin.name} />
                       <AvatarFallback>{admin.name[0]}</AvatarFallback>
                     </Avatar>
                   ))}
                 </div>
                 {community.isMember ? (
                   community.isAdmin ? (
-                    <Button variant="secondary" size="sm">
+                    <Button variant="secondary" size="sm" onClick={() => openEdit(community)}>
                       <Settings className="mr-2 h-4 w-4" />
                       Gérer
                     </Button>
@@ -306,7 +458,7 @@ export default function CommunautesPage() {
                     <Badge className="bg-primary/10 text-primary">Membre</Badge>
                   )
                 ) : (
-                  <Button size="sm">
+                  <Button size="sm" onClick={() => handleJoin(community)}>
                     <UserPlus className="mr-2 h-4 w-4" />
                     Rejoindre
                   </Button>

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { FileText, Newspaper, Calendar, Users } from "lucide-react"
-import { toast } from "sonner"
+import { notify } from "@/lib/notify"
 import {
   Dialog,
   DialogContent,
@@ -54,7 +54,7 @@ export function PublishDialog({ open, onOpenChange }: PublishDialogProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) {
-      toast.error("Le titre est requis.")
+      notify.error("Champ requis", "Le titre est requis.")
       return
     }
     setIsSubmitting(true)
@@ -66,9 +66,7 @@ export function PublishDialog({ open, onOpenChange }: PublishDialogProps) {
     setIsSubmitting(false)
     onOpenChange(false)
     resetForm()
-    toast.success("Contenu publié", {
-      description: `${typeLabel} « ${title} » a été publié avec succès.`,
-    })
+    notify.published(`${typeLabel} — ${title}`, true)
   }
 
   return (
