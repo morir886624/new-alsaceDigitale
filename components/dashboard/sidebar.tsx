@@ -19,8 +19,11 @@ import {
   HelpCircle,
   Plus,
   ChevronDown,
+  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useSidebar } from "./sidebar-context"
+import { PublishDialog } from "./publish-dialog"
 
 const navigationItems = [
   { icon: LayoutDashboard, label: "Tableau de bord", href: "/" },
@@ -46,12 +49,14 @@ interface SidebarItemProps {
   label: string
   href: string
   active?: boolean
+  onNavigate?: () => void
 }
 
-function SidebarItem({ icon: Icon, label, href, active }: SidebarItemProps) {
+function SidebarItem({ icon: Icon, label, href, active, onNavigate }: SidebarItemProps) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
         active
@@ -68,6 +73,8 @@ function SidebarItem({ icon: Icon, label, href, active }: SidebarItemProps) {
 export function Sidebar() {
   const pathname = usePathname()
   const [isAdminExpanded, setIsAdminExpanded] = useState(true)
+  const [isPublishOpen, setIsPublishOpen] = useState(false)
+  const { isOpen, close } = useSidebar()
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/"
@@ -75,19 +82,41 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col border-r border-sidebar-border bg-sidebar">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-          <span className="text-lg font-bold text-primary-foreground">AD</span>
+    <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden"
+          onClick={close}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "fixed left-0 top-0 z-50 flex h-screen w-[280px] max-w-[85vw] flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-300 ease-in-out lg:translate-x-0",
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Logo */}
+        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+            <span className="text-lg font-bold text-primary-foreground">AD</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-bold tracking-wide text-sidebar-foreground">
+              ALSACE DIGITALE
+            </span>
+            <span className="text-xs text-muted-foreground">Espace membre</span>
+          </div>
+          <button
+            onClick={close}
+            className="ml-auto rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground lg:hidden"
+            aria-label="Fermer le menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <div className="flex flex-col">
-          <span className="text-sm font-bold tracking-wide text-sidebar-foreground">
-            ALSACE DIGITALE
-          </span>
-          <span className="text-xs text-muted-foreground">Espace membre</span>
-        </div>
-      </div>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-4 py-4">
@@ -104,6 +133,7 @@ export function Sidebar() {
                 label={item.label}
                 href={item.href}
                 active={isActive(item.href)}
+                onNavigate={close}
               />
             ))}
           </div>
@@ -135,6 +165,7 @@ export function Sidebar() {
                   label={item.label}
                   href={item.href}
                   active={isActive(item.href)}
+                  onNavigate={close}
                 />
               ))}
             </div>
@@ -144,11 +175,20 @@ export function Sidebar() {
 
       {/* CTA Button */}
       <div className="border-t border-sidebar-border p-4">
-        <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 hover:shadow-lg">
+        <button
+          onClick={() => {
+            setIsPublishOpen(true)
+            close()
+          }}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 hover:shadow-lg"
+        >
           <Plus className="h-5 w-5" />
           <span>Publier du contenu</span>
         </button>
       </div>
-    </aside>
+      </aside>
+
+      <PublishDialog open={isPublishOpen} onOpenChange={setIsPublishOpen} />
+    </>
   )
 }
