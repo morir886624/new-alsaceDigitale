@@ -12,20 +12,23 @@ export function ThemeToggle() {
     setMounted(true)
   }, [])
 
-  const isDark = theme === "dark"
+  // Until mounted, the theme is unknown on the client, so we must render
+  // identical markup to the server to avoid hydration mismatches.
+  const isDark = mounted && theme === "dark"
 
   return (
     <button
       onClick={() => setTheme(isDark ? "light" : "dark")}
       className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-      aria-label={isDark ? "Activer le mode clair" : "Activer le mode sombre"}
+      aria-label={
+        !mounted
+          ? "Changer de thème"
+          : isDark
+            ? "Activer le mode clair"
+            : "Activer le mode sombre"
+      }
     >
-      {/* Avoid hydration mismatch: render a stable icon until mounted */}
-      {mounted && isDark ? (
-        <Sun className="h-5 w-5" />
-      ) : (
-        <Moon className="h-5 w-5" />
-      )}
+      {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
     </button>
   )
 }
