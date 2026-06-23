@@ -15,6 +15,7 @@ import {
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { formatNumber } from "@/lib/utils"
+import { notify } from "@/lib/notify"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -31,10 +32,22 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 
-const skillCategories = [
+interface Skill {
+  id: number
+  name: string
+  members: number
+}
+
+interface SkillCategory {
+  id: number
+  name: string
+  skills: Skill[]
+  active: boolean
+}
+
+const initialCategories: SkillCategory[] = [
   {
     id: 1,
     name: "Langages de programmation",
@@ -98,10 +111,13 @@ const skillCategories = [
   },
 ]
 
+let skillIdCounter = 100
+
 export default function GestionCompetencesPage() {
+  const [categories, setCategories] = useState<SkillCategory[]>(initialCategories)
   const [searchQuery, setSearchQuery] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [newSkill, setNewSkill] = useState({ name: "", category: "" })
+  const [form, setForm] = useState({ name: "", category: "" })
   const [expandedCategories, setExpandedCategories] = useState<number[]>([1, 2, 3])
 
   const toggleCategory = (id: number) => {
@@ -110,10 +126,64 @@ export default function GestionCompetencesPage() {
     )
   }
 
-  const totalSkills = skillCategories.reduce((acc, cat) => acc + cat.skills.length, 0)
-  const totalMembers = skillCategories.reduce((acc, cat) => 
+  const totalSkills = categories.reduce((acc, cat) => acc + cat.skills.length, 0)
+  const totalMembers = categories.reduce((acc, cat) => 
     acc + cat.skills.reduce((a, s) => a + s.members, 0), 0
   )
+
+  const openCreate = (categoryId?: number) => {
+    setForm({ name: "", category: categoryId ? String(categoryId) : "" })
+    setIsDialogOpen(true)
+  }
+
+  const handleAddSkill = () => {
+    if (!form.name.trim()) {
+      notify.error("Champ requis", "Veuillez renseigner le nom de la compétence.")
+      return
+    }
+    if (!form.category) {
+      notify.error("Catégorie requise", "Veuillez sélectionner une catégorie.")
+      return
+    }
+    const categoryId = Number(form.category)
+    const newSkill: Skill = { id: skillIdCounter++, name: form.name.trim(), members: 0 }
+    setCategories(prev =>
+      prev.map(cat =>
+        cat.id === categoryId ? { ...cat, skills: [...cat.skills, newSkill] } : cat
+      )
+    )
+    if (!expandedCategories.includes(categoryId)) {
+      setExpandedCategories(prev => [...prev, categoryId])
+    }
+    notify.created(newSkill.name)
+    setIsDialogOpen(false)
+  }
+
+  const handleDeleteSkill = (categoryId: number, skill: Skill) => {
+    setCategories(prev =>
+      prev.map(cat =>
+        cat.id === categoryId
+          ? { ...cat, skills: cat.skills.filter(s => s.id !== skill.id) }
+          : cat
+      )
+    )
+    notify.deleted(skill.name)
+  }
+
+  const handleEditCategory = (category: SkillCategory) => {
+    const next = window.prompt("Nouveau nom de la catégorie :", category.name)
+    if (next && next.trim() && next.trim() !== category.name) {
+      setCategories(prev =>
+        prev.map(c => (c.id === category.id ? { ...c, name: next.trim() } : c))
+      )
+      notify.updated(next.trim())
+    }
+  }
+
+  const handleDeleteCategory = (category: SkillCategory) => {
+    setCategories(prev => prev.filter(c => c.id !== category.id))
+    notify.deleted(category.name)
+  }
 
   return (
     <DashboardLayout>
@@ -122,61 +192,60 @@ export default function GestionCompetencesPage() {
         description="Gérez les compétences disponibles pour les profils membres"
         icon={Award}
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Nouvelle compétence
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Ajouter une compétence</DialogTitle>
-                <DialogDescription>
-                  Ajoutez une nouvelle compétence à une catégorie existante.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-foreground">
-                    Nom de la compétence
-                  </label>
-                  <input
-                    type="text"
-                    value={newSkill.name}
-                    onChange={(e) => setNewSkill({ ...newSkill, name: e.target.value })}
-                    placeholder="Ex: GraphQL"
-                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-foreground">
-                    Catégorie
-                  </label>
-                  <select
-                    value={newSkill.category}
-                    onChange={(e) => setNewSkill({ ...newSkill, category: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">Sélectionner une catégorie</option>
-                    {skillCategories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Annuler
-                </Button>
-                <Button onClick={() => setIsDialogOpen(false)}>
-                  Ajouter
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => openCreate()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nouvelle compétence
+          </Button>
         }
       />
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ajouter une compétence</DialogTitle>
+            <DialogDescription>
+              Ajoutez une nouvelle compétence à une catégorie existante.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                Nom de la compétence
+              </label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Ex: GraphQL"
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                Catégorie
+              </label>
+              <select
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="">Sélectionner une catégorie</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleAddSkill}>
+              Ajouter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats */}
       <div className="mb-6 grid gap-4 md:grid-cols-4">
@@ -185,7 +254,7 @@ export default function GestionCompetencesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Catégories</p>
-                <p className="text-2xl font-bold text-foreground">{skillCategories.length}</p>
+                <p className="text-2xl font-bold text-foreground">{categories.length}</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                 <Award className="h-6 w-6 text-primary" />
@@ -252,12 +321,12 @@ export default function GestionCompetencesPage() {
 
       {/* Liste des catégories et compétences */}
       <div className="space-y-4">
-        {skillCategories.map((category) => (
+        {categories.map((category) => (
           <Card key={category.id}>
             <CardHeader className="cursor-pointer" onClick={() => toggleCategory(category.id)}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <GripVertical className="h-5 w-5 text-muted-foreground" />
+                  <GripVertical className="hidden h-5 w-5 text-muted-foreground sm:block" />
                   <CardTitle className="text-base">{category.name}</CardTitle>
                   <Badge variant="secondary">{category.skills.length} compétences</Badge>
                 </div>
@@ -272,15 +341,15 @@ export default function GestionCompetencesPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category) }}>
                         <Edit2 className="mr-2 h-4 w-4" />
                         Modifier
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openCreate(category.id) }}>
                         <Plus className="mr-2 h-4 w-4" />
                         Ajouter une compétence
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteCategory(category) }}>
                         <Trash2 className="mr-2 h-4 w-4" />
                         Supprimer
                       </DropdownMenuItem>
@@ -303,12 +372,19 @@ export default function GestionCompetencesPage() {
                       >
                         <span className="text-sm font-medium text-foreground">{skill.name}</span>
                         <span className="text-xs text-muted-foreground">({skill.members})</span>
-                        <button className="ml-1 hidden text-muted-foreground hover:text-destructive group-hover:inline">
+                        <button
+                          onClick={() => handleDeleteSkill(category.id, skill)}
+                          className="ml-1 text-muted-foreground transition-colors hover:text-destructive"
+                          aria-label={`Supprimer ${skill.name}`}
+                        >
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     ))}
-                  <button className="flex items-center gap-1 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary">
+                  <button
+                    onClick={() => openCreate(category.id)}
+                    className="flex items-center gap-1 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                  >
                     <Plus className="h-4 w-4" />
                     Ajouter
                   </button>
