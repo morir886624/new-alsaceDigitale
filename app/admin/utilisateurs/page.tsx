@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { 
   UserCog, 
-  Plus, 
   Search,
   Filter,
   MoreHorizontal,
@@ -18,7 +17,8 @@ import {
 } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { PageHeader } from "@/components/dashboard/page-header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { notify } from "@/lib/notify"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -30,6 +30,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Table,
   TableBody,
   TableCell,
@@ -39,7 +47,19 @@ import {
 } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
 
-const users = [
+interface AppUser {
+  id: number
+  name: string
+  email: string
+  role: string
+  plan: string
+  status: string
+  joinedAt: string
+  lastLogin: string
+  avatar: string
+}
+
+const initialUsers: AppUser[] = [
   {
     id: 1,
     name: "Jean Dupont",
@@ -138,10 +158,15 @@ const stats = [
 ]
 
 export default function ListeUtilisateursPage() {
+  const [users, setUsers] = useState<AppUser[]>(initialUsers)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUsers, setSelectedUsers] = useState<number[]>([])
   const [roleFilter, setRoleFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [isInviteOpen, setIsInviteOpen] = useState(false)
+  const [inviteForm, setInviteForm] = useState({ name: "", email: "", role: "member" })
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null)
+  const [editForm, setEditForm] = useState({ name: "", email: "", role: "member", plan: "Gratuit" })
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -169,6 +194,18 @@ export default function ListeUtilisateursPage() {
     }
   }
 
+  const filteredUsers = users.filter((user) => {
+    if (roleFilter !== "all" && user.role !== roleFilter) return false
+    if (statusFilter !== "all" && user.status !== statusFilter) return false
+    if (
+      searchQuery &&
+      !user.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !user.email.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+      return false
+    return true
+  })
+
   const toggleUserSelection = (userId: number) => {
     setSelectedUsers(prev =>
       prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
@@ -176,11 +213,100 @@ export default function ListeUtilisateursPage() {
   }
 
   const toggleAllUsers = () => {
-    if (selectedUsers.length === users.length) {
+    if (selectedUsers.length === filteredUsers.length) {
       setSelectedUsers([])
     } else {
-      setSelectedUsers(users.map(u => u.id))
+      setSelectedUsers(filteredUsers.map(u => u.id))
     }
+  }
+
+  const handleInvite = () => {
+    if (!inviteForm.name.trim()) {
+      notify.error("Champ requis", "Veuillez renseigner le nom.")
+      return
+    }
+    if (!inviteForm.email.trim() || !inviteForm.email.includes("@")) {
+      notify.error("Email invalide", "Veuillez renseigner un email valide.")
+      return
+    }
+    const newUser: AppUser = {
+      id: Math.max(0, ...users.map(u => u.id)) + 1,
+      name: inviteForm.name.trim(),
+      email: inviteForm.email.trim(),
+      role: inviteForm.role,
+      plan: "Gratuit",
+      status: "pending",
+      joinedAt: "À l'instant",
+      lastLogin: "-",
+      avatar: "",
+    }
+    setUsers(prev => [newUser, ...prev])
+    notify.invited(newUser.email)
+    setInviteForm({ name: "", email: "", role: "member" })
+    setIsInviteOpen(false)
+  }
+
+  const openEdit = (user: AppUser) => {
+    setEditingUser(user)
+    setEditForm({ name: user.name, email: user.email, role: user.role, plan: user.plan })
+  }
+
+  const handleEditSubmit = () => {
+    if (!editingUser) return
+    if (!editForm.name.trim()) {
+      notify.error("Champ requis", "Veuillez renseigner le nom.")
+      return
+    }
+    setUsers(prev =>
+      prev.map(u =>
+        u.id === editingUser.id
+          ? { ...u, name: editForm.name.trim(), email: editForm.email.trim(), role: editForm.role, plan: editForm.plan }
+          : u
+      )
+    )
+    notify.updated(editForm.name.trim())
+    setEditingUser(null)
+  }
+
+  const handlePromote = (user: AppUser) => {
+    setUsers(prev => prev.map(u => (u.id === user.id ? { ...u, role: "admin" } : u)))
+    notify.success("Rôle mis à jour", `${user.name} est désormais administrateur.`)
+  }
+
+  const handleSuspend = (user: AppUser) => {
+    const nextStatus = user.status === "suspended" ? "active" : "suspended"
+    setUsers(prev => prev.map(u => (u.id === user.id ? { ...u, status: nextStatus } : u)))
+    if (nextStatus === "suspended") {
+      notify.success("Utilisateur suspendu", `${user.name} a été suspendu.`)
+    } else {
+      notify.success("Suspension levée", `${user.name} est de nouveau actif.`)
+    }
+  }
+
+  const handleDelete = (user: AppUser) => {
+    setUsers(prev => prev.filter(u => u.id !== user.id))
+    setSelectedUsers(prev => prev.filter(id => id !== user.id))
+    notify.deleted(user.name)
+  }
+
+  const handleBulkEmail = () => {
+    notify.sent(`${selectedUsers.length} utilisateur(s)`)
+  }
+
+  const handleBulkRole = () => {
+    setUsers(prev =>
+      prev.map(u => (selectedUsers.includes(u.id) ? { ...u, role: "moderator" } : u))
+    )
+    notify.success("Rôles mis à jour", `${selectedUsers.length} utilisateur(s) sont désormais modérateurs.`)
+    setSelectedUsers([])
+  }
+
+  const handleBulkSuspend = () => {
+    setUsers(prev =>
+      prev.map(u => (selectedUsers.includes(u.id) ? { ...u, status: "suspended" } : u))
+    )
+    notify.success("Utilisateurs suspendus", `${selectedUsers.length} utilisateur(s) ont été suspendus.`)
+    setSelectedUsers([])
   }
 
   return (
@@ -191,17 +317,130 @@ export default function ListeUtilisateursPage() {
         icon={UserCog}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => notify.exported("Liste des utilisateurs")}>
               <Download className="mr-2 h-4 w-4" />
               Exporter
             </Button>
-            <Button>
+            <Button onClick={() => setIsInviteOpen(true)}>
               <UserPlus className="mr-2 h-4 w-4" />
               Inviter
             </Button>
           </div>
         }
       />
+
+      {/* Dialog invitation */}
+      <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Inviter un utilisateur</DialogTitle>
+            <DialogDescription>
+              Envoyez une invitation par email à un nouveau membre.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Nom complet</label>
+              <input
+                type="text"
+                value={inviteForm.name}
+                onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+                placeholder="Ex: Camille Durand"
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Email</label>
+              <input
+                type="email"
+                value={inviteForm.email}
+                onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                placeholder="email@exemple.com"
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Rôle</label>
+              <select
+                value={inviteForm.role}
+                onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
+              >
+                <option value="member">Membre</option>
+                <option value="moderator">Modérateur</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsInviteOpen(false)}>Annuler</Button>
+            <Button onClick={handleInvite}>Envoyer l&apos;invitation</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog édition */}
+      <Dialog open={editingUser !== null} onOpenChange={(open) => !open && setEditingUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modifier l&apos;utilisateur</DialogTitle>
+            <DialogDescription>
+              Mettez à jour les informations et permissions de l&apos;utilisateur.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Nom complet</label>
+              <input
+                type="text"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Email</label>
+              <input
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Rôle</label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  <option value="member">Membre</option>
+                  <option value="moderator">Modérateur</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Plan</label>
+                <select
+                  value={editForm.plan}
+                  onChange={(e) => setEditForm({ ...editForm, plan: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  <option value="Gratuit">Gratuit</option>
+                  <option value="Membre">Membre</option>
+                  <option value="Premium">Premium</option>
+                  <option value="Entreprise">Entreprise</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingUser(null)}>Annuler</Button>
+            <Button onClick={handleEditSubmit}>Enregistrer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats */}
       <div className="mb-6 grid gap-4 md:grid-cols-4">
@@ -252,9 +491,13 @@ export default function ListeUtilisateursPage() {
                 <option value="pending">En attente</option>
                 <option value="suspended">Suspendu</option>
               </select>
-              <Button variant="outline" size="sm">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setRoleFilter("all"); setStatusFilter("all"); setSearchQuery(""); notify.info("Filtres réinitialisés") }}
+              >
                 <Filter className="mr-2 h-4 w-4" />
-                Plus de filtres
+                Réinitialiser
               </Button>
             </div>
           </div>
@@ -270,15 +513,15 @@ export default function ListeUtilisateursPage() {
                 {selectedUsers.length} utilisateur{selectedUsers.length > 1 ? "s" : ""} sélectionné{selectedUsers.length > 1 ? "s" : ""}
               </span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleBulkEmail}>
                   <Mail className="mr-2 h-4 w-4" />
                   Envoyer un email
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleBulkRole}>
                   <Shield className="mr-2 h-4 w-4" />
                   Changer le rôle
                 </Button>
-                <Button variant="destructive" size="sm">
+                <Button variant="destructive" size="sm" onClick={handleBulkSuspend}>
                   <ShieldOff className="mr-2 h-4 w-4" />
                   Suspendre
                 </Button>
@@ -296,7 +539,7 @@ export default function ListeUtilisateursPage() {
               <TableRow>
                 <TableHead className="w-12">
                   <Checkbox
-                    checked={selectedUsers.length === users.length}
+                    checked={filteredUsers.length > 0 && selectedUsers.length === filteredUsers.length}
                     onCheckedChange={toggleAllUsers}
                   />
                 </TableHead>
@@ -310,7 +553,7 @@ export default function ListeUtilisateursPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell>
                     <Checkbox
@@ -321,7 +564,7 @@ export default function ListeUtilisateursPage() {
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="h-9 w-9">
-                        <AvatarImage src={user.avatar} alt={user.name} />
+                        <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
                         <AvatarFallback>{user.name.split(" ").map(n => n[0]).join("")}</AvatarFallback>
                       </Avatar>
                       <div>
@@ -345,28 +588,28 @@ export default function ListeUtilisateursPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => notify.info("Profil", `Affichage du profil de ${user.name}.`)}>
                           <Eye className="mr-2 h-4 w-4" />
                           Voir le profil
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEdit(user)}>
                           <Edit2 className="mr-2 h-4 w-4" />
                           Modifier
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => notify.sent(user.name)}>
                           <Mail className="mr-2 h-4 w-4" />
                           Envoyer un email
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handlePromote(user)}>
                           <Shield className="mr-2 h-4 w-4" />
                           Promouvoir admin
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-amber-600">
+                        <DropdownMenuItem className="text-amber-600" onClick={() => handleSuspend(user)}>
                           <ShieldOff className="mr-2 h-4 w-4" />
-                          Suspendre
+                          {user.status === "suspended" ? "Lever la suspension" : "Suspendre"}
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(user)}>
                           <Trash2 className="mr-2 h-4 w-4" />
                           Supprimer
                         </DropdownMenuItem>

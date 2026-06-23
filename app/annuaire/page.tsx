@@ -19,6 +19,19 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { notify } from "@/lib/notify"
+
+type Member = (typeof members)[number]
 
 const members = [
   {
@@ -119,6 +132,24 @@ export default function AnnuairePage() {
   const [selectedLocation, setSelectedLocation] = useState("Toutes")
   const [selectedSkill, setSelectedSkill] = useState("Toutes")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [contactMember, setContactMember] = useState<Member | null>(null)
+  const [contactMessage, setContactMessage] = useState("")
+  const [profileMember, setProfileMember] = useState<Member | null>(null)
+
+  const handleSendContact = () => {
+    if (!contactMember) return
+    if (!contactMessage.trim()) {
+      notify.error("Message vide", "Veuillez saisir un message avant l'envoi.")
+      return
+    }
+    notify.sent(contactMember.name)
+    setContactMember(null)
+    setContactMessage("")
+  }
+
+  const handleLinkedin = (member: Member) => {
+    notify.info("Ouverture du profil LinkedIn", `Redirection vers le profil de ${member.name}.`)
+  }
 
   const filteredMembers = members.filter((member) => {
     if (selectedLocation !== "Toutes" && member.location !== selectedLocation) return false
@@ -250,11 +281,11 @@ export default function AnnuairePage() {
                     ))}
                   </div>
                   <div className="mt-4 flex gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => setContactMember(member)}>
                       <Mail className="mr-2 h-4 w-4" />
                       Contact
                     </Button>
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" onClick={() => handleLinkedin(member)}>
                       <Linkedin className="h-4 w-4" />
                     </Button>
                   </div>
@@ -298,11 +329,11 @@ export default function AnnuairePage() {
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => setProfileMember(member)}>
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Voir profil
                     </Button>
-                    <Button size="sm">
+                    <Button size="sm" onClick={() => setContactMember(member)}>
                       <Mail className="mr-2 h-4 w-4" />
                       Contact
                     </Button>
@@ -313,6 +344,105 @@ export default function AnnuairePage() {
           ))}
         </div>
       )}
+
+      {/* Dialog de contact */}
+      <Dialog open={!!contactMember} onOpenChange={(open) => !open && setContactMember(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Contacter {contactMember?.name}</DialogTitle>
+            <DialogDescription>
+              Votre message sera envoyé à {contactMember?.name}, {contactMember?.role} chez {contactMember?.company}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="contact-message">Message</Label>
+            <Textarea
+              id="contact-message"
+              value={contactMessage}
+              onChange={(e) => setContactMessage(e.target.value)}
+              placeholder="Bonjour, je souhaiterais échanger avec vous..."
+              rows={5}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContactMember(null)}>
+              Annuler
+            </Button>
+            <Button onClick={handleSendContact}>
+              <Mail className="mr-2 h-4 w-4" />
+              Envoyer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog profil */}
+      <Dialog open={!!profileMember} onOpenChange={(open) => !open && setProfileMember(null)}>
+        <DialogContent>
+          {profileMember && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Profil de {profileMember.name}</DialogTitle>
+                <DialogDescription>
+                  {profileMember.role} chez {profileMember.company}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col items-center text-center">
+                <Avatar className="mb-4 h-24 w-24">
+                  <AvatarImage src={profileMember.avatar} alt={profileMember.name} />
+                  <AvatarFallback className="bg-primary text-xl text-primary-foreground">
+                    {profileMember.name.split(" ").map((n) => n[0]).join("")}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  <span>{profileMember.location}</span>
+                </div>
+                <div className="mt-4 w-full text-left">
+                  <p className="mb-2 text-sm font-medium text-foreground">Compétences</p>
+                  <div className="flex flex-wrap gap-1">
+                    {profileMember.skills.map((skill) => (
+                      <Badge key={skill} variant="secondary" className="text-xs">
+                        {skill}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-4 w-full text-left">
+                  <p className="mb-2 text-sm font-medium text-foreground">Centres d&apos;intérêt</p>
+                  <div className="flex flex-wrap gap-1">
+                    {profileMember.interests.map((interest) => (
+                      <Badge key={interest} variant="outline" className="text-xs">
+                        {interest}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    handleLinkedin(profileMember)
+                  }}
+                >
+                  <Linkedin className="mr-2 h-4 w-4" />
+                  LinkedIn
+                </Button>
+                <Button
+                  onClick={() => {
+                    setContactMember(profileMember)
+                    setProfileMember(null)
+                  }}
+                >
+                  <Mail className="mr-2 h-4 w-4" />
+                  Contacter
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

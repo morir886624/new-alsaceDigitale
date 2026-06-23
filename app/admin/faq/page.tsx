@@ -17,6 +17,7 @@ import {
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { formatNumber } from "@/lib/utils"
+import { notify } from "@/lib/notify"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -33,10 +34,25 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 
-const faqCategories = [
+interface FaqQuestion {
+  id: number
+  question: string
+  answer: string
+  views: number
+  helpful: number
+  published: boolean
+}
+
+interface FaqCategory {
+  id: number
+  name: string
+  icon: string
+  questions: FaqQuestion[]
+}
+
+const initialCategories: FaqCategory[] = [
   {
     id: 1,
     name: "Adhésion & Cotisations",
@@ -155,11 +171,15 @@ const faqCategories = [
   },
 ]
 
+let questionIdCounter = 100
+
 export default function GestionFAQPage() {
+  const [categories, setCategories] = useState<FaqCategory[]>(initialCategories)
   const [searchQuery, setSearchQuery] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<number[]>([1, 2])
-  const [newQuestion, setNewQuestion] = useState({ question: "", answer: "", category: "" })
+  const [editing, setEditing] = useState<{ categoryId: number; questionId: number } | null>(null)
+  const [form, setForm] = useState({ question: "", answer: "", category: "" })
 
   const toggleCategory = (id: number) => {
     setExpandedCategories(prev =>
@@ -167,13 +187,115 @@ export default function GestionFAQPage() {
     )
   }
 
-  const totalQuestions = faqCategories.reduce((acc, cat) => acc + cat.questions.length, 0)
-  const publishedQuestions = faqCategories.reduce((acc, cat) => 
+  const totalQuestions = categories.reduce((acc, cat) => acc + cat.questions.length, 0)
+  const publishedQuestions = categories.reduce((acc, cat) => 
     acc + cat.questions.filter(q => q.published).length, 0
   )
-  const totalViews = faqCategories.reduce((acc, cat) => 
+  const totalViews = categories.reduce((acc, cat) => 
     acc + cat.questions.reduce((a, q) => a + q.views, 0), 0
   )
+
+  const openCreate = (categoryId?: number) => {
+    setEditing(null)
+    setForm({ question: "", answer: "", category: categoryId ? String(categoryId) : "" })
+    setIsDialogOpen(true)
+  }
+
+  const openEdit = (categoryId: number, question: FaqQuestion) => {
+    setEditing({ categoryId, questionId: question.id })
+    setForm({ question: question.question, answer: question.answer, category: String(categoryId) })
+    setIsDialogOpen(true)
+  }
+
+  const handleSubmit = () => {
+    if (!form.category) {
+      notify.error("Catégorie requise", "Veuillez sélectionner une catégorie.")
+      return
+    }
+    if (!form.question.trim()) {
+      notify.error("Champ requis", "Veuillez renseigner la question.")
+      return
+    }
+    if (!form.answer.trim()) {
+      notify.error("Champ requis", "Veuillez renseigner la réponse.")
+      return
+    }
+    const targetCategoryId = Number(form.category)
+
+    if (editing) {
+      setCategories(prev =>
+        prev.map(cat => {
+          // Remove from old category if category changed
+          const withoutEdited = {
+            ...cat,
+            questions: cat.questions.filter(q => q.id !== editing.questionId),
+          }
+          if (cat.id === targetCategoryId) {
+            const existing = cat.questions.find(q => q.id === editing.questionId)
+            const updated: FaqQuestion = {
+              id: editing.questionId,
+              question: form.question.trim(),
+              answer: form.answer.trim(),
+              views: existing?.views ?? 0,
+              helpful: existing?.helpful ?? 0,
+              published: existing?.published ?? true,
+            }
+            return { ...withoutEdited, questions: [...withoutEdited.questions, updated] }
+          }
+          return withoutEdited
+        })
+      )
+      notify.updated(form.question.trim())
+    } else {
+      const newQuestion: FaqQuestion = {
+        id: questionIdCounter++,
+        question: form.question.trim(),
+        answer: form.answer.trim(),
+        views: 0,
+        helpful: 0,
+        published: true,
+      }
+      setCategories(prev =>
+        prev.map(cat =>
+          cat.id === targetCategoryId
+            ? { ...cat, questions: [...cat.questions, newQuestion] }
+            : cat
+        )
+      )
+      if (!expandedCategories.includes(targetCategoryId)) {
+        setExpandedCategories(prev => [...prev, targetCategoryId])
+      }
+      notify.created(newQuestion.question)
+    }
+    setIsDialogOpen(false)
+  }
+
+  const handleTogglePublish = (categoryId: number, question: FaqQuestion) => {
+    setCategories(prev =>
+      prev.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              questions: cat.questions.map(q =>
+                q.id === question.id ? { ...q, published: !q.published } : q
+              ),
+            }
+          : cat
+      )
+    )
+    notify.published(question.question, !question.published)
+  }
+
+  const handleDelete = (categoryId: number, question: FaqQuestion) => {
+    setCategories(prev =>
+      prev.map(cat =>
+        cat.id === categoryId
+          ? { ...cat, questions: cat.questions.filter(q => q.id !== question.id) }
+          : cat
+      )
+    )
+    notify.deleted(question.question)
+  }
 
   return (
     <DashboardLayout>
@@ -182,73 +304,76 @@ export default function GestionFAQPage() {
         description="Gérez les questions fréquemment posées"
         icon={HelpCircle}
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Nouvelle question
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Ajouter une question FAQ</DialogTitle>
-                <DialogDescription>
-                  Créez une nouvelle question pour la FAQ.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-foreground">
-                    Catégorie
-                  </label>
-                  <select
-                    value={newQuestion.category}
-                    onChange={(e) => setNewQuestion({ ...newQuestion, category: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
-                  >
-                    <option value="">Sélectionner une catégorie</option>
-                    {faqCategories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-foreground">
-                    Question
-                  </label>
-                  <input
-                    type="text"
-                    value={newQuestion.question}
-                    onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
-                    placeholder="Ex: Comment puis-je...?"
-                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-foreground">
-                    Réponse
-                  </label>
-                  <textarea
-                    value={newQuestion.answer}
-                    onChange={(e) => setNewQuestion({ ...newQuestion, answer: e.target.value })}
-                    placeholder="Rédigez la réponse complète..."
-                    rows={5}
-                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Annuler
-                </Button>
-                <Button onClick={() => setIsDialogOpen(false)}>
-                  Publier
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => openCreate()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nouvelle question
+          </Button>
         }
       />
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editing ? "Modifier la question" : "Ajouter une question FAQ"}
+            </DialogTitle>
+            <DialogDescription>
+              {editing
+                ? "Mettez à jour cette question fréquemment posée."
+                : "Créez une nouvelle question pour la FAQ."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                Catégorie
+              </label>
+              <select
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
+              >
+                <option value="">Sélectionner une catégorie</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                Question
+              </label>
+              <input
+                type="text"
+                value={form.question}
+                onChange={(e) => setForm({ ...form, question: e.target.value })}
+                placeholder="Ex: Comment puis-je...?"
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                Réponse
+              </label>
+              <textarea
+                value={form.answer}
+                onChange={(e) => setForm({ ...form, answer: e.target.value })}
+                placeholder="Rédigez la réponse complète..."
+                rows={5}
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleSubmit}>
+              {editing ? "Enregistrer" : "Publier"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats */}
       <div className="mb-6 grid gap-4 md:grid-cols-4">
@@ -283,7 +408,7 @@ export default function GestionFAQPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Catégories</p>
-                <p className="text-2xl font-bold text-foreground">{faqCategories.length}</p>
+                <p className="text-2xl font-bold text-foreground">{categories.length}</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
                 <MessageSquare className="h-6 w-6 text-accent" />
@@ -324,7 +449,7 @@ export default function GestionFAQPage() {
 
       {/* Liste des catégories et questions */}
       <div className="space-y-4">
-        {faqCategories.map((category) => (
+        {categories.map((category) => (
           <Card key={category.id}>
             <CardHeader 
               className="cursor-pointer" 
@@ -337,7 +462,11 @@ export default function GestionFAQPage() {
                   <Badge variant="secondary">{category.questions.length} questions</Badge>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); openCreate(category.id) }}
+                  >
                     <Plus className="h-4 w-4" />
                   </Button>
                   <ChevronDown 
@@ -387,11 +516,11 @@ export default function GestionFAQPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openEdit(category.id, question)}>
                                 <Edit2 className="mr-2 h-4 w-4" />
                                 Modifier
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleTogglePublish(category.id, question)}>
                                 {question.published ? (
                                   <>
                                     <EyeOff className="mr-2 h-4 w-4" />
@@ -404,7 +533,7 @@ export default function GestionFAQPage() {
                                   </>
                                 )}
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive">
+                              <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(category.id, question)}>
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Supprimer
                               </DropdownMenuItem>

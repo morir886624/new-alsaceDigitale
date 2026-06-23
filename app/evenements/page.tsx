@@ -5,7 +5,6 @@ import {
   Calendar, 
   Plus, 
   Search, 
-  Filter,
   MoreHorizontal,
   MapPin,
   Clock,
@@ -19,6 +18,7 @@ import {
 } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { PageHeader } from "@/components/dashboard/page-header"
+import { notify } from "@/lib/notify"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -29,8 +29,31 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
-const events = [
+interface AppEvent {
+  id: number
+  title: string
+  description: string
+  date: string
+  time: string
+  location: string
+  type: string
+  status: string
+  attendees: number
+  maxAttendees: number
+  organizer: { name: string; avatar: string }
+  image: string
+}
+
+const initialEvents: AppEvent[] = [
   {
     id: 1,
     title: "Meetup IA & Machine Learning",
@@ -89,12 +112,17 @@ const events = [
   },
 ]
 
+const eventTypeOptions = ["Meetup", "Workshop", "Hackathon", "Conférence", "Networking", "Webinaire"]
 const eventTypes = ["Tous", "Meetup", "Workshop", "Hackathon", "Conférence"]
 
 export default function EvenementsPage() {
+  const [events, setEvents] = useState<AppEvent[]>(initialEvents)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedType, setSelectedType] = useState("Tous")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [form, setForm] = useState({ title: "", description: "", date: "", time: "", location: "", type: "Meetup", maxAttendees: "" })
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -119,6 +147,92 @@ export default function EvenementsPage() {
     return <Badge className={colors[type] || "bg-muted"}>{type}</Badge>
   }
 
+  const filteredEvents = events.filter((event) => {
+    if (selectedType !== "Tous" && event.type !== selectedType) return false
+    if (searchQuery && !event.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
+    return true
+  })
+
+  const openCreate = () => {
+    setEditingId(null)
+    setForm({ title: "", description: "", date: "", time: "", location: "", type: "Meetup", maxAttendees: "" })
+    setIsDialogOpen(true)
+  }
+
+  const openEdit = (event: AppEvent) => {
+    setEditingId(event.id)
+    setForm({
+      title: event.title,
+      description: event.description,
+      date: event.date,
+      time: event.time,
+      location: event.location,
+      type: event.type,
+      maxAttendees: String(event.maxAttendees),
+    })
+    setIsDialogOpen(true)
+  }
+
+  const handleSubmit = () => {
+    if (!form.title.trim()) {
+      notify.error("Champ requis", "Veuillez renseigner le titre de l'évènement.")
+      return
+    }
+    const maxAttendees = Number(form.maxAttendees) || 50
+
+    if (editingId !== null) {
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === editingId
+            ? {
+                ...e,
+                title: form.title.trim(),
+                description: form.description.trim(),
+                date: form.date.trim() || e.date,
+                time: form.time.trim() || e.time,
+                location: form.location.trim() || e.location,
+                type: form.type,
+                maxAttendees,
+              }
+            : e
+        )
+      )
+      notify.updated(form.title.trim())
+    } else {
+      const newEvent: AppEvent = {
+        id: Math.max(0, ...events.map((e) => e.id)) + 1,
+        title: form.title.trim(),
+        description: form.description.trim(),
+        date: form.date.trim() || "À définir",
+        time: form.time.trim() || "À définir",
+        location: form.location.trim() || "À définir",
+        type: form.type,
+        status: "upcoming",
+        attendees: 0,
+        maxAttendees,
+        organizer: { name: "Jean Dupont", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face" },
+        image: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&h=400&fit=crop",
+      }
+      setEvents((prev) => [newEvent, ...prev])
+      notify.created(newEvent.title)
+    }
+    setIsDialogOpen(false)
+  }
+
+  const handleDelete = (event: AppEvent) => {
+    setEvents((prev) => prev.filter((e) => e.id !== event.id))
+    notify.deleted(event.title)
+  }
+
+  const handleRegister = (event: AppEvent) => {
+    setEvents((prev) =>
+      prev.map((e) =>
+        e.id === event.id && e.attendees < e.maxAttendees ? { ...e, attendees: e.attendees + 1 } : e
+      )
+    )
+    notify.registered(event.title)
+  }
+
   return (
     <DashboardLayout>
       <PageHeader 
@@ -126,12 +240,110 @@ export default function EvenementsPage() {
         description="Gérez et participez aux évènements de la communauté"
         icon={Calendar}
         actions={
-          <Button>
+          <Button onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />
             Créer un évènement
           </Button>
         }
       />
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingId !== null ? "Modifier l'évènement" : "Créer un évènement"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingId !== null
+                ? "Mettez à jour les informations de l'évènement."
+                : "Renseignez les informations du nouvel évènement."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Titre</label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="Ex: Meetup DevOps"
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Description</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Décrivez l'évènement..."
+                rows={3}
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Date</label>
+                <input
+                  type="text"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  placeholder="Ex: 12 Juin 2024"
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Horaire</label>
+                <input
+                  type="text"
+                  value={form.time}
+                  onChange={(e) => setForm({ ...form, time: e.target.value })}
+                  placeholder="Ex: 18:00 - 21:00"
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-foreground">Lieu</label>
+              <input
+                type="text"
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                placeholder="Ex: La Plage Digitale, Strasbourg"
+                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Type</label>
+                <select
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  {eventTypeOptions.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Capacité</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={form.maxAttendees}
+                  onChange={(e) => setForm({ ...form, maxAttendees: e.target.value })}
+                  placeholder="Ex: 100"
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
+            <Button onClick={handleSubmit}>{editingId !== null ? "Enregistrer" : "Créer"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filtres et recherche */}
       <Card className="mb-6">
@@ -186,12 +398,12 @@ export default function EvenementsPage() {
 
       {/* Grille des évènements */}
       <div className={`grid gap-6 ${viewMode === "grid" ? "md:grid-cols-2" : "grid-cols-1"}`}>
-        {events.map((event) => (
+        {filteredEvents.map((event) => (
           <Card key={event.id} className="overflow-hidden transition-shadow hover:shadow-md">
             <div className={`flex ${viewMode === "list" ? "flex-row" : "flex-col"}`}>
               <div className={`relative overflow-hidden ${viewMode === "list" ? "w-48 shrink-0" : "aspect-video"}`}>
                 <img
-                  src={event.image}
+                  src={event.image || "/placeholder.svg"}
                   alt={event.title}
                   className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
                 />
@@ -204,7 +416,7 @@ export default function EvenementsPage() {
                   {getStatusBadge(event.status)}
                 </div>
                 <h3 className="mb-2 text-lg font-semibold text-foreground line-clamp-1 hover:text-primary">
-                  <a href="#">{event.title}</a>
+                  <button type="button" onClick={() => notify.info(event.title, "Ouverture de la fiche évènement.")}>{event.title}</button>
                 </h3>
                 <p className="mb-3 text-sm text-muted-foreground line-clamp-2">{event.description}</p>
                 
@@ -226,7 +438,7 @@ export default function EvenementsPage() {
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
                       <Avatar className="h-6 w-6">
-                        <AvatarImage src={event.organizer.avatar} alt={event.organizer.name} />
+                        <AvatarImage src={event.organizer.avatar || "/placeholder.svg"} alt={event.organizer.name} />
                         <AvatarFallback>{event.organizer.name[0]}</AvatarFallback>
                       </Avatar>
                       <span className="text-xs text-muted-foreground">{event.organizer.name}</span>
@@ -236,27 +448,34 @@ export default function EvenementsPage() {
                       <span>{event.attendees}/{event.maxAttendees}</span>
                     </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <MoreHorizontal className="h-4 w-4" />
+                  <div className="flex items-center gap-1">
+                    {event.status !== "completed" && (
+                      <Button size="sm" variant="secondary" onClick={() => handleRegister(event)}>
+                        S&apos;inscrire
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Voir
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Edit2 className="mr-2 h-4 w-4" />
-                        Modifier
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => notify.info(event.title, "Ouverture de la fiche évènement.")}>
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Voir
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEdit(event)}>
+                          <Edit2 className="mr-2 h-4 w-4" />
+                          Modifier
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(event)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
 
                 {/* Barre de progression */}
